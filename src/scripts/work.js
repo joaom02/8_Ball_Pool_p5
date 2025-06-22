@@ -2,10 +2,12 @@ let poolWidth = 1280,
     poolHeight = 720;
 let margin = 50;
 let ballRadius = 20;
-let friction = 0.04; // já não usado
+//let friction = 0.04;  já não usado
 let rollingFriction = 0.02;
 let dragCoefficient = 0.001;
-let gravity = 0.5;
+let restitution = 0.9;
+let frictionCoefficient = 0.2;
+let gravity = 0.9;
 let balls = [];
 let pockets = [];
 let solidScore = 0;
@@ -315,44 +317,75 @@ class Ball {
 }
 
 function checkBallCollisions() {
-  let restitution = 0.9;
-  let frictionCoefficient = 0.1;
   for (let i = 0; i < balls.length; i++) {
     for (let j = i + 1; j < balls.length; j++) {
       let ballA = balls[i];
       let ballB = balls[j];
       if (ballA.pocketed || ballB.pocketed) continue;
-      
-      let collisionVec = p5.Vector.sub(ballB.pos, ballA.pos);
-      let distance = collisionVec.mag();
-      let minDist = ballRadius * 2;
-      
-      if (distance < minDist && distance > 0) {
-        let overlap = minDist - distance;
-        let correction = collisionVec.copy().normalize().mult(overlap / 2);
-        ballA.pos.sub(correction);
-        ballB.pos.add(correction);
-        
-        let normal = collisionVec.copy().normalize();
-        let relativeVel = p5.Vector.sub(ballB.vel, ballA.vel);
-        let velAlongNormal = relativeVel.dot(normal);
-        if (velAlongNormal > 0) continue;
-        
-        let impulseScalar = -(1 + restitution) * velAlongNormal / (1/ballA.mass + 1/ballB.mass);
-        let impulse = normal.copy().mult(impulseScalar);
-        
-        ballA.vel.sub(impulse.copy().div(ballA.mass));
-        ballB.vel.add(impulse.copy().div(ballB.mass));
 
-        if (abs(impulseScalar) > 5) {
-          ballA.vz = -abs(impulseScalar) / 20;
-          ballB.vz = -abs(impulseScalar) / 20;
+      let distanceVect = p5.Vector.sub(ballB.pos, ballA.pos);
+      let distanceVectMag = distanceVect.mag();
+      let minDistance = ballRadius * 2;
+      
+      if (distanceVectMag < minDistance && distanceVectMag > 0) {
+        let distanceCorrection = (minDistance - distanceVectMag) / 2.0;
+        let d = distanceVect.copy();
+        let correctionVector = d.normalize().mult(distanceCorrection);
+        ballB.pos.add(correctionVector);
+        ballA.pos.sub(correctionVector);
+
+        let theta = distanceVect.heading();
+
+        let sine = sin(theta);
+        let cosine = cos(theta);
+
+        let vTemp = [new p5.Vector(), new p5.Vector()];
+
+        vTemp[0].x = cosine * ballA.vel.x + sine * ballA.vel.y;
+        vTemp[0].y = cosine * ballA.vel.y - sine * ballA.vel.x;
+
+        vTemp[1].x = cosine * ballB.vel.x + sine * ballB.vel.y;
+        vTemp[1].y = cosine * ballB.vel.y - sine * ballB.vel.x;
+
+        let vFinal = [new p5.Vector(), new p5.Vector()];
+
+        vFinal[0].x = ((ballA.mass - ballB.mass) * vTemp[0].x + 2 * ballB.mass * vTemp[1].x) / 
+                       (ballA.mass + ballB.mass);
+        vFinal[0].y = vTemp[0].y;
+
+        vFinal[1].x = ((ballB.mass - ballA.mass) * vTemp[1].x + 2 * ballA.mass * vTemp[0].x) / 
+                      (ballA.mass + ballB.mass);
+        vFinal[1].y = vTemp[1].y;
+
+        let bTemp = [new p5.Vector(), new p5.Vector()];
+        bTemp[0].x += vFinal[0].x;
+        bTemp[1].x += vFinal[1].x;
+
+        let velFinalA = new p5.Vector();
+        let velFinalB = new p5.Vector();
+        
+        velFinalA.x = cosine * vFinal[0].x - sine * vFinal[0].y;
+        velFinalA.y = cosine * vFinal[0].y + sine * vFinal[0].x;
+        
+        velFinalB.x = cosine * vFinal[1].x - sine * vFinal[1].y;
+        velFinalB.y = cosine * vFinal[1].y + sine * vFinal[1].x;
+
+        ballA.vel.set(velFinalA);
+        ballB.vel.set(velFinalB);
+
+        let impulseScalar = abs(vFinal[0].x - vTemp[0].x) * ballA.mass;
+        if (impulseScalar > 5) {
+          ballA.vz = -impulseScalar / 20;
+          ballB.vz = -impulseScalar / 20;
         }
 
+        let normal = distanceVect.copy().normalize();
         let tangent = createVector(-normal.y, normal.x);
+        let relativeVel = p5.Vector.sub(ballB.vel, ballA.vel);
         let relativeTangentialVel = relativeVel.dot(tangent);
-        let frictionImpulseScalar = frictionCoefficient * abs(impulseScalar);
+        let frictionImpulseScalar = frictionCoefficient * impulseScalar;
         let frictionImpulse = tangent.copy().mult(frictionImpulseScalar * (relativeTangentialVel < 0 ? 1 : -1));
+        
         ballA.vel.sub(frictionImpulse.copy().div(ballA.mass));
         ballB.vel.add(frictionImpulse.copy().div(ballB.mass));
       }
